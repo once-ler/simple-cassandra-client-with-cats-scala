@@ -1,0 +1,6 @@
+**/target
+**/.metals
+**/.bloop
+**/.idea
+**/production
+**/log
