@@ -1,15 +1,17 @@
 package com.eztier.datasource
 package infrastructure.cassandra
 
+import cats.Functor
 import cats.effect.{Async, Concurrent, Resource, Sync}
-import fs2.Chunk
-import com.datastax.driver.core.{ResultSet, Session, Statement}
+import fs2.{Chunk, Stream}
+import com.datastax.driver.core.{ResultSet, Row, Session, SimpleStatement, Statement}
 
 import scala.concurrent.{ExecutionContext, Future}
 import scala.util.{Failure, Success}
 import scala.reflect.runtime.universe._
+import collection.JavaConverters._
 
-class CassandraClient[F[_] : Async : Sync: Concurrent](session: Resource[F, Session])
+class CassandraClient[F[_] : Async : Sync: Concurrent : Functor](session: Resource[F, Session])
   extends WithBlockingThreadPool
   with WithInsertStatementBuilder
   with WithCreateStatementBuilder {
@@ -34,7 +36,7 @@ class CassandraClient[F[_] : Async : Sync: Concurrent](session: Resource[F, Sess
         }
     }
 
-  def insertManyAsync[A <: AnyRef](records: Chunk[A], keySpace: String = "", tableName: String = ""): F[Vector[ResultSet]] = {
+    def insertManyAsync[A <: AnyRef](records: Chunk[A], keySpace: String = "", tableName: String = ""): F[Vector[ResultSet]] = {
     session.use { s =>
 
       blockingThreadPool.use { ec: ExecutionContext =>
@@ -63,48 +65,26 @@ class CassandraClient[F[_] : Async : Sync: Concurrent](session: Resource[F, Sess
 
   }
 
-  def batchInsertAsync[A <: AnyRef](records: Chunk[A], keySpace: String = "", tableName: String = ""): F[ResultSet] =
-    session.use { s =>
+  def batchInsertAsync[A <: AnyRef](records: Chunk[A], keySpace: String = "", tableName: String = ""): F[ResultSet] = {
+    val batchStatement = buildInsertStatements(records, keySpace, tableName)
+      .asBatchStatement
 
-      blockingThreadPool.use { ec: ExecutionContext =>
-        implicit val cs = ec
+    execAsync(batchStatement)
 
-        Async[F].async {
-          (cb: Either[Throwable, ResultSet] => Unit) =>
+  }
 
-            val batchStatement = buildInsertStatements(records, keySpace, tableName)
-              .asBatchStatement
+  def createAsync[A: TypeTag](keySpace: String, tableName: Option[String] = None)(partitionKeys: String*)(clusteringKeys: String*)(orderBy: (String, Option[Int])*): F[ResultSet] = {
+    val simpleStatement = getCreateStmt(keySpace)(partitionKeys:_*)(clusteringKeys:_*)(orderBy:_*)
 
-            val f: Future[ResultSet] = s.executeAsync(batchStatement)
+    execAsync(simpleStatement)
+  }
 
-            f.onComplete {
-              case Success(s) => cb(Right(s))
-              case Failure(e) => cb(Left(e))
-            }
-        }
+  def readAsync(stmt: String): Stream[F, Row] =
+    Stream.eval(execAsync(new SimpleStatement(stmt)))
+      .flatMap { r =>
+        val it: java.util.Iterator[Row] = r.iterator()
+        Stream.fromIterator(it.asScala)
       }
-    }
-
-  def createAsync[A: TypeTag](keySpace: String, tableName: Option[String] = None)(partitionKeys: String*)(clusteringKeys: String*)(orderBy: Option[String] = None, direction: Option[Int] = None): F[ResultSet] =
-    session.use { s =>
-
-      blockingThreadPool.use { ec: ExecutionContext =>
-        implicit val cs = ec
-
-        Async[F].async {
-          (cb: Either[Throwable, ResultSet] => Unit) =>
-
-            val simpleStatement = getCreateStmt(keySpace, tableName)(partitionKeys:_*)(clusteringKeys:_*)(orderBy, direction)
-
-            val f:Future[ResultSet] = s.executeAsync(simpleStatement)
-
-            f.onComplete {
-              case Success(s) => cb(Right(s))
-              case Failure(e) => cb(Left(e))
-            }
-        }
-      }
-    }
 
 }
 
