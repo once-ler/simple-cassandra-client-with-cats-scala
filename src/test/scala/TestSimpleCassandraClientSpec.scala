@@ -51,7 +51,7 @@ class TestSimpleCassandraClientSpec extends Specification {
       val res = createSimpleCassandraClientResource[IO].use {
         case db =>
 
-          val u = db.createAsync[CaResourceModified]("dwh")("Environment", "Store", "Type")("StartTime", "Id")(("StartTime" -> None), ("Id" -> None))
+          val u = db.createAsync[CaResourceModified]("dwh")("Environment", "Store", "Type")("Uid", "StartTime")(("Uid" -> None), ("StartTime" -> None))
 
           val r = u.unsafeRunSync()
 
@@ -66,7 +66,7 @@ class TestSimpleCassandraClientSpec extends Specification {
       val res = createSimpleCassandraClientResource[IO].use {
         case db =>
 
-          val u = db.createAsync[CaResourceProcessed]("dwh")("Environment", "Store", "Type", "Purpose")("StartTime", "Id")(("StartTime" -> None), ("Id" -> None))
+          val u = db.createAsync[CaResourceProcessed]("dwh")("Environment", "Store", "Type", "Purpose")("Uid", "StartTime")(("Uid" -> -1.some), ("StartTime" -> -1.some))
 
           val r = u.unsafeRunSync()
 
@@ -109,14 +109,19 @@ class TestSimpleCassandraClientSpec extends Specification {
     "Read a table" in {
       val res = createSimpleCassandraClientResource[IO].use {
         case db =>
-          val u = db.readAsync("select * from dwh.ca_resource_processed limit 10")
+          val u = db.readAsync("select * from dwh.ca_resource_processed limit 1")
+            .flatMap { a =>
+              val uid = a.getUUID("uid")
+
+              Stream.emit(uid).covary[IO]
+            }
 
           val r = u.compile.toList.unsafeRunSync()
 
           IO.pure(r)
       }.unsafeRunSync()
 
-      res.isInstanceOf[List[Row]]
+      res.isInstanceOf[List[UUID]]
     }
 
   }
