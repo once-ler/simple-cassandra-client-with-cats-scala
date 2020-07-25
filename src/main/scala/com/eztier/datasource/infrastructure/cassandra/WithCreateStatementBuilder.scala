@@ -9,17 +9,7 @@ import com.datastax.driver.core.utils.UUIDs
 import scala.Option
 import scala.reflect.runtime.universe._
 
-trait WithCreateStatementBuilder {
-
-  def camelToUnderscores(name: String) = "[A-Z\\d]".r.replaceAllIn(name.charAt(0).toLower.toString + name.substring(1), {m =>
-    "_" + m.group(0).toLowerCase()
-  })
-
-  def underscoreToCamel(name: String) = "_([a-z\\d])".r.replaceAllIn(name, {m =>
-    m.group(1).toUpperCase()
-  })
-
-  def camelToSpaces(name: String) = "[A-Z\\d]".r.replaceAllIn(name, (m => " " + m.group(0)))
+trait WithCreateStatementBuilder extends WithCommon {
 
   private def classAccessors[T: TypeTag]: List[MethodSymbol] = typeOf[T].members.collect {
     case m: MethodSymbol if m.isCaseAccessor => m
@@ -76,15 +66,6 @@ trait WithCreateStatementBuilder {
   }
 
   private def getCreateStmtString[T](keySpace: String, tableName: String)(implicit typeTag: TypeTag[T]): Seq[String] = {
-    /*
-    val o = typeTag.tpe.resultType
-
-    val t = tableName match {
-      case Some(a) => a
-      case _ => o.typeSymbol.name.toString
-    }
-    */
-
     val m = toCaType[T]
 
     val f = (Array[String]() /: m) {
@@ -125,19 +106,6 @@ trait WithCreateStatementBuilder {
     }.mkString(",")
 
     val sb = s" with clustering order by (${ob})"
-
-    /*
-    val sb = orderBy match {
-      case Some(a) if a.length > 0 && f.find(_ == a) != None =>
-        val sort = direction match {
-          case Some(b) => if (b > 0) "asc" else "desc"
-          case None => "asc"
-        }
-
-        s" with clustering order by (${a} ${sort})"
-      case None => ""
-    }
-    */
 
     val t0 = t(0)
     val trim = t0.substring(0, t0.length - 2)

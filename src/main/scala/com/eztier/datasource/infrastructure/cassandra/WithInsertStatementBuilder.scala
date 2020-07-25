@@ -7,7 +7,7 @@ import fs2.Chunk
 
 import scala.collection.JavaConverters._
 
-trait WithInsertStatementBuilder {
+trait WithInsertStatementBuilder extends WithCommon {
 
   private def zipKV(
     in: AnyRef,
@@ -17,7 +17,7 @@ trait WithInsertStatementBuilder {
     ((Array[String](), Array[AnyRef]()) /: in.getClass.getDeclaredFields.filter(filterFunc)) {
       (a, f) =>
         f.setAccessible(true)
-        val k = a._1 :+ formatFunc(f.getName).asInstanceOf[String]
+        val k = a._1 :+ formatFunc(camelToUnderscores(f.getName)).asInstanceOf[String]
 
         val v = a._2 :+
           (formatFunc(f.get(in)) match {
@@ -29,7 +29,12 @@ trait WithInsertStatementBuilder {
                 case a: Seq[_] => a.asJava
                 case _ => o
               }
-            case _ => null
+            case None => null
+            case a: Map[_, _] => a.asJava
+            case a: List[_] => a.asJava
+            case a: Vector[_] => a.asJava
+            case a: Seq[_] => a.asJava
+            case _ => formatFunc(f.get(in))
           }).asInstanceOf[AnyRef]
 
         (k, v)

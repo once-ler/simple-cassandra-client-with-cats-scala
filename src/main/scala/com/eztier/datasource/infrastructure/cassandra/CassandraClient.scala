@@ -36,35 +36,35 @@ class CassandraClient[F[_] : Async : Sync: Concurrent : Functor](session: Resour
         }
     }
 
-    def insertManyAsync[A <: AnyRef](records: Chunk[A], keySpace: String = "", tableName: String = ""): F[Vector[ResultSet]] = {
-    session.use { s =>
+    // Threaded insert.
+    def insertManyAsync[A <: AnyRef](records: Chunk[A], keySpace: String = "", tableName: String = ""): F[Vector[ResultSet]] =
+      session.use { s =>
 
-      blockingThreadPool.use { ec: ExecutionContext =>
-        implicit val cs = ec
+        blockingThreadPool.use { ec: ExecutionContext =>
+          implicit val cs = ec
 
-        Async[F].async {
-          (cb: Either[Throwable, Vector[ResultSet]] => Unit) =>
+          Async[F].async {
+            (cb: Either[Throwable, Vector[ResultSet]] => Unit) =>
 
-            val statements = buildInsertStatements(records, keySpace, tableName)
+              val statements = buildInsertStatements(records, keySpace, tableName)
 
-            val l = statements.map { stmt =>
-              val f: Future[ResultSet] = s.executeAsync(stmt)
-              f
-            }
+              val l = statements.map { stmt =>
+                val f: Future[ResultSet] = s.executeAsync(stmt)
+                f
+              }
 
-            val f = Future.sequence(l)
+              val f = Future.sequence(l)
 
-            f.onComplete {
-              case Success(s) => cb(Right(s))
-              case Failure(e) => cb(Left(e))
-            }
+              f.onComplete {
+                case Success(s) => cb(Right(s))
+                case Failure(e) => cb(Left(e))
+              }
+          }
+
         }
-
       }
-    }
 
-  }
-
+  // Single BatchStatement.
   def batchInsertAsync[A <: AnyRef](records: Chunk[A], keySpace: String = "", tableName: String = ""): F[ResultSet] = {
     val batchStatement = buildInsertStatements(records, keySpace, tableName)
       .asBatchStatement
@@ -73,7 +73,7 @@ class CassandraClient[F[_] : Async : Sync: Concurrent : Functor](session: Resour
 
   }
 
-  def createAsync[A: TypeTag](keySpace: String, tableName: Option[String] = None)(partitionKeys: String*)(clusteringKeys: String*)(orderBy: (String, Option[Int])*): F[ResultSet] = {
+  def createAsync[A: TypeTag](keySpace: String)(partitionKeys: String*)(clusteringKeys: String*)(orderBy: (String, Option[Int])*): F[ResultSet] = {
     val simpleStatement = getCreateStmt(keySpace)(partitionKeys:_*)(clusteringKeys:_*)(orderBy:_*)
 
     execAsync(simpleStatement)
