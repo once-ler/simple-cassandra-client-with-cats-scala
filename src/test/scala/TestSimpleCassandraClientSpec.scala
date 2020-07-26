@@ -12,6 +12,7 @@ import cats.effect.{IO, Sync}
 import com.datastax.driver.core.utils.UUIDs
 import fs2.{Chunk, Pipe, Stream}
 import com.datastax.driver.core.{ResultSet, Row, Session, SimpleStatement, Statement}
+import com.weather.scalacass.syntax._
 import org.specs2.mutable.Specification
 import com.eztier.datasource.infrastructure.cassandra.{CassandraClient, CassandraSession}
 
@@ -20,7 +21,7 @@ case class CaResourceModified
   Environment: String,
   Store: String,
   Type: String,
-  StartTime: Date,
+  Start_Time: Date,
   Id: String,
   Oid: String,
   Uid: UUID,
@@ -29,15 +30,15 @@ case class CaResourceModified
 
 case class CaResourceProcessed
 (
-  Environment: String,
-  Store: String,
-  Type: String,
-  Purpose: String,
-  StartTime: Date,
-  Id: String,
-  Oid: String,
-  Uid: UUID,
-  Current: String
+  Environment: String = "",
+  Store: String = "",
+  Type: String = "",
+  Purpose: String = "",
+  Start_Time: Date = Date.from(Instant.now),
+  Id: String = "",
+  Oid: String = "",
+  Uid: UUID = UUIDs.timeBased(),
+  Current: String = ""
 )
 
 class TestSimpleCassandraClientSpec extends Specification {
@@ -90,7 +91,7 @@ class TestSimpleCassandraClientSpec extends Specification {
             Environment = environment,
             Store = store,
             Type = type_,
-            StartTime = Date.from(Instant.now),
+            Start_Time = Date.from(Instant.now),
             Id = "ABC123",
             Oid = "5dd81233ae6d16d797be3915e52ac94b",
             Uid = UUIDs.timeBased(),
@@ -122,36 +123,6 @@ class TestSimpleCassandraClientSpec extends Specification {
     "Read a table" in {
       val res = createSimpleCassandraClientResource[IO].use {
         case db =>
-          val u = db.readAsync(
-            s"""select uid from dwh.ca_resource_processed
-               | where environment = '${environment}'
-               | and store = '${store}'
-               | and type = '${type_}'
-               | and purpose = '${purpose}' limit 1""".stripMargin)
-            .flatMap { a =>
-              val uid = a.getUUID("uid")
-
-              val r = uid match {
-                case a if a == null =>
-                  val ts = LocalDateTime.now().minusDays(2).toInstant(ZoneOffset.UTC).toEpochMilli()
-                  UUIDs.endOf(ts)
-                case _ => uid
-              }
-              Stream.emit(r).covary[IO]
-            }
-
-          val r = u.compile.toList.unsafeRunSync()
-          IO.pure(r)
-
-          // IO.pure(u.compile.toList.unsafeRunSync())
-      }.unsafeRunSync()
-
-      res.isInstanceOf[List[UUID]]
-    }
-
-    "Read another table" in {
-      val res = createSimpleCassandraClientResource[IO].use {
-        case db =>
           val ts = LocalDateTime.now().minusDays(2).toInstant(ZoneOffset.UTC).toEpochMilli()
           val r = UUIDs.endOf(ts)
 
@@ -168,8 +139,58 @@ class TestSimpleCassandraClientSpec extends Specification {
           IO.suspend(u.compile.toList)
       }.unsafeRunSync()
 
+      // Conversion to a type.
+      val res2 = res.map { row =>
+        row.as[CaResourceModified]
+      }
+
       res.isInstanceOf[List[Row]]
     }
+
+    "Read multiple tables" in {
+      import com.eztier.common.mergeSyntax._
+
+      val res = createSimpleCassandraClientResource[IO].use {
+        case db =>
+
+          val ts = LocalDateTime.now().minusDays(2).toInstant(ZoneOffset.UTC).toEpochMilli()
+          val defaultUuid = UUIDs.endOf(ts)
+
+          val u = db.readAsync(
+            s"""select uid from dwh.ca_resource_processed
+               | where environment = '${environment}'
+               | and store = '${store}'
+               | and type = '${type_}'
+               | and purpose = '${purpose}' limit 1""".stripMargin
+          ) ++ Stream.emit(defaultUuid).covary[IO]
+          .take(1L)
+          .flatMap { a =>
+            val nextStmt =
+              s"""select * from dwh.ca_resource_modified
+                | where environment = '${environment}'
+                | and store = '${store}'
+                | and type = '${type_}'
+                | and uid > ${a.toString}
+                | limit 10""".stripMargin
+
+            println(nextStmt)
+
+            db.readAsync(nextStmt)
+          }
+          .map(_.as[CaResourceModified])
+              .map { a =>
+                val b = CaResourceProcessed()
+
+                (b merge a).copy(Purpose = purpose)
+              }
+
+          IO.suspend(u.compile.toList)
+      }.unsafeRunSync()
+
+      res.isInstanceOf[List[AnyRef]]
+    }
+
+
 
   }
 

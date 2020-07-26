@@ -22,7 +22,9 @@ lazy val commonSettings = Seq(
   resolvers ++= Seq(
     Resolver.sonatypeRepo("public"),
     Resolver.sonatypeRepo("releases"),
-    Resolver.sonatypeRepo("snapshots")
+    Resolver.sonatypeRepo("snapshots"),
+    Resolver.bintrayIvyRepo("thurstonsand", "maven"),
+    Resolver.jcenterRepo
   )
 )
 
@@ -34,6 +36,7 @@ val CassandraCoreVersion = "3.8.0"
 val GuavaVersion = "19.0"
 val CirceConfigVersion = "0.7.0"
 val Specs2Version = "4.10.0"
+val ScalaCassVersion = "3.2.1-3.5.0"
 
 val cats = "org.typelevel" %% "cats-core" % CatsVersion
 val fs2 = "co.fs2" %% "fs2-core" % FS2Version
@@ -45,6 +48,7 @@ val circe = "io.circe" %% "circe-core" % CirceVersion
 val circeGenericExtras = "io.circe" %% "circe-generic-extras" % CirceGenericExVersion
 val circeConfig = "io.circe" %% "circe-config" % CirceConfigVersion
 val specs2 = "org.specs2" %% "specs2-core" % Specs2Version % "test"
+val scalaCass = "com.github.thurstonsand" %% "scala-cass" % ScalaCassVersion
 
 lazy val simpleCassandraClientWithCats = project
   .in(file("."))
@@ -60,6 +64,7 @@ lazy val simpleCassandraClientWithCats = project
       circe,
       circeGenericExtras,
       circeConfig,
+      scalaCass,
       specs2
     ),
     dependencyOverrides ++= Seq(
