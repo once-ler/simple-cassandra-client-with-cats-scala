@@ -14,7 +14,7 @@ lazy val compilerOptions = Seq(
 
 lazy val commonSettings = Seq(
   organization := "com.eztier",
-  version := "0.1.1-SNAPSHOT",
+  version := "0.1.1",
   scalaVersion := "2.12.8",
   scalacOptions ++= compilerOptions,
   addCompilerPlugin("com.olegpy" %% "better-monadic-for" % "0.3.1"),
