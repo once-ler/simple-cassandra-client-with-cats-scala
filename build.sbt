@@ -121,18 +121,18 @@ developers := List(
 )
 
 releaseProcess := Seq[ReleaseStep](
-  checkSnapshotDependencies,
-  inquireVersions,
-  runClean,
-  runTest,
-  setReleaseVersion,
+  // checkSnapshotDependencies,
+  // inquireVersions,
+  // runClean,
+  // runTest,
+  // setReleaseVersion,
   // commitReleaseVersion,
   tagRelease,
   // releaseStepCommand("publishSigned"),
   // publishArtifacts,
   setNextVersion,
   commitNextVersion,
-  releaseStepCommand("sonatypeRelease"),
+  // releaseStepCommand("sonatypeRelease"),
   pushChanges
 )
 
