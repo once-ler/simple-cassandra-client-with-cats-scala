@@ -122,7 +122,7 @@ developers := List(
 
 releaseProcess := Seq[ReleaseStep](
   // checkSnapshotDependencies,
-  // inquireVersions,
+  inquireVersions,
   // runClean,
   // runTest,
   setReleaseVersion,
