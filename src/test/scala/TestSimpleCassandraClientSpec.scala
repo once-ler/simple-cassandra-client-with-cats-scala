@@ -104,6 +104,7 @@ class TestSimpleCassandraClientSpec extends Specification {
 
     "Create a table" in {
 
+      println("createSimpleCassandraClientResource[IO]")
       val res = createSimpleCassandraClientResource[IO].use {
         case db =>
 
@@ -119,6 +120,7 @@ class TestSimpleCassandraClientSpec extends Specification {
 
     "Create another table" in {
 
+      println("createSimpleCassandraClientResource[IO]")
       val res = createSimpleCassandraClientResource[IO].use {
         case db =>
 
@@ -133,6 +135,7 @@ class TestSimpleCassandraClientSpec extends Specification {
     }
 
     "Insert a row" in {
+      println("createSimpleCassandraClientResource[IO]")
       val res = createSimpleCassandraClientResource[IO].use {
         case db =>
 
@@ -170,6 +173,7 @@ class TestSimpleCassandraClientSpec extends Specification {
         WHERE uid > maxTimeuuid('2013-01-01 00:05+0000') AND uid < minTimeuuid('2013-02-02 10:00+0000')
     */
     "Read a table" in {
+      println("createSimpleCassandraClientResource[IO]")
       val res = createSimpleCassandraClientResource[IO].use {
         case db =>
           val ts = LocalDateTime.now().minusDays(2).toInstant(ZoneOffset.UTC).toEpochMilli()
@@ -192,6 +196,7 @@ class TestSimpleCassandraClientSpec extends Specification {
     }
 
     "Read another table" in {
+      println("createSimpleCassandraClientResource[IO]")
       val res = createSimpleCassandraClientResource[IO].use {
         case db =>
           val ts = LocalDateTime.now().minusDays(2).toInstant(ZoneOffset.UTC).toEpochMilli()
@@ -219,6 +224,7 @@ class TestSimpleCassandraClientSpec extends Specification {
     }
 
     "Read multiple tables" in {
+      println("createSimpleCassandraClientResource[IO]")
       val res = createSimpleCassandraClientResource[IO].use {
         case db =>
 
@@ -232,8 +238,6 @@ class TestSimpleCassandraClientSpec extends Specification {
 
       res.isInstanceOf[List[ResultSet]]
     }
-
-
 
   }
 

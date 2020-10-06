@@ -1,8 +1,9 @@
 package com.eztier.datasource
 package infrastructure.cassandra
 
-import cats.Functor
-import cats.effect.{Async, Concurrent, Resource, Sync}
+import cats.implicits._
+import cats.{Functor}
+import cats.effect.{Async, Concurrent, Sync}
 import fs2.{Chunk, Stream}
 import com.datastax.driver.core.{ResultSet, Row, Session, SimpleStatement, Statement}
 
@@ -11,34 +12,34 @@ import scala.util.{Failure, Success}
 import scala.reflect.runtime.universe._
 import collection.JavaConverters._
 
-class CassandraClient[F[_] : Async : Sync: Concurrent : Functor](session: Resource[F, Session])
+class CassandraClient[F[_] : Async : Sync: Concurrent : Functor](session: F[Session])
   extends WithBlockingThreadPool
   with WithInsertStatementBuilder
   with WithCreateStatementBuilder {
 
   def execAsync(ss: Statement): F[ResultSet] =
-    session.use {
-      s =>
+    Sync[F].suspend(session).flatMap { s =>
 
-        blockingThreadPool.use { ec: ExecutionContext =>
-          implicit val cs = ec
+      blockingThreadPool.use { ec: ExecutionContext =>
+        implicit val cs = ec
 
-          Async[F].async {
-            (cb: Either[Throwable, ResultSet] => Unit) =>
+        Async[F].async {
+          (cb: Either[Throwable, ResultSet] => Unit) =>
 
-              val f:Future[ResultSet] = s.executeAsync(ss)
+            val f:Future[ResultSet] = s.executeAsync(ss)
 
-              f.onComplete {
-                case Success(s) => cb(Right(s))
-                case Failure(e) => cb(Left(e))
-              }
-          }
+            f.onComplete {
+              case Success(s) => cb(Right(s))
+              case Failure(e) => cb(Left(e))
+            }
         }
+      }
     }
+
 
     // Threaded insert.
     def insertManyAsync[A <: AnyRef](records: Chunk[A], keySpace: String = "", tableName: String = ""): F[Vector[ResultSet]] =
-      session.use { s =>
+      Sync[F].suspend(session).flatMap { s =>
 
         blockingThreadPool.use { ec: ExecutionContext =>
           implicit val cs = ec
@@ -89,5 +90,5 @@ class CassandraClient[F[_] : Async : Sync: Concurrent : Functor](session: Resour
 }
 
 object CassandraClient {
-  def apply[F[_] : Async : Concurrent](session: Resource[F, Session]): CassandraClient[F] = new CassandraClient[F](session)
+  def apply[F[_] : Async : Concurrent](session: F[Session]): CassandraClient[F] = new CassandraClient[F](session)
 }
