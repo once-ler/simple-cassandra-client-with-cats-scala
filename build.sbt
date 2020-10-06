@@ -126,14 +126,14 @@ releaseProcess := Seq[ReleaseStep](
   runClean,
   runTest,
   setReleaseVersion,
-  commitReleaseVersion,
+  // commitReleaseVersion,
   tagRelease,
-  releaseStepCommand("publishSigned"),
-  publishArtifacts,
+  // releaseStepCommand("publishSigned"),
+  // publishArtifacts,
   setNextVersion,
   commitNextVersion,
-  // releaseStepCommand("sonatypeRelease"),
-  // pushChanges
+  releaseStepCommand("sonatypeRelease"),
+  pushChanges
 )
 
 // sbt-assembly
