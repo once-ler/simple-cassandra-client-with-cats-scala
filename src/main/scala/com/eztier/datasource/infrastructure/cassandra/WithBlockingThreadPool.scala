@@ -8,12 +8,7 @@ import com.datastax.driver.core.{ResultSet, ResultSetFuture}
 import com.google.common.util.concurrent.{FutureCallback, Futures, ListenableFuture}
 
 trait WithBlockingThreadPool {
-  def blockingThreadPool[F[_]: Sync]: Resource[F, ExecutionContext] =
-    Resource(Sync[F].delay {
-      val executor = Executors.newFixedThreadPool(4)
-      val ec = ExecutionContext.fromExecutor(executor)
-      (ec, Sync[F].delay(executor.shutdown()))
-    })
+  implicit val ec = ExecutionContext.fromExecutor(Executors.newFixedThreadPool(4))
 
   implicit def resultSetFutureToScala(f: ResultSetFuture): Future[ResultSet] = {
     val p = Promise[ResultSet]()

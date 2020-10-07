@@ -11,7 +11,7 @@ package object cassandra {
     for {
       conf <- Resource.liftF(ConfigParser.decodePathF[F, AppConfig]("datasource"))
       cnConf = conf.cassandra.connection
-      cs = CassandraSession[F](cnConf.host, cnConf.port, cnConf.user, cnConf.password).getSession
+      cs = CassandraSession[F](cnConf.host, cnConf.port, cnConf.user, cnConf.password).getSessionSync
       cl = CassandraClient(cs)
     } yield cl
 

@@ -14,7 +14,7 @@ lazy val compilerOptions = Seq(
 
 lazy val commonSettings = Seq(
   organization := "com.eztier",
-  version := "0.1.2",
+  version := "0.1.3",
   scalaVersion := "2.12.8",
   scalacOptions ++= compilerOptions,
   addCompilerPlugin("com.olegpy" %% "better-monadic-for" % "0.3.1"),
@@ -121,19 +121,19 @@ developers := List(
 )
 
 releaseProcess := Seq[ReleaseStep](
-  // checkSnapshotDependencies,
+  checkSnapshotDependencies,
   inquireVersions,
-  // runClean,
-  // runTest,
+  runClean,
+  runTest,
   setReleaseVersion,
-  commitReleaseVersion,
-  tagRelease,
-  // releaseStepCommand("publishSigned"),
-  // publishArtifacts,
+  // commitReleaseVersion,
+  // tagRelease,
+  releaseStepCommand("publishSigned"),
+  publishArtifacts,
   setNextVersion,
-  commitNextVersion,
+  // commitNextVersion,
   // releaseStepCommand("sonatypeRelease"),
-  pushChanges
+  // pushChanges
 )
 
 // sbt-assembly

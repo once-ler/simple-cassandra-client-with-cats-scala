@@ -37,20 +37,18 @@ class CassandraSession[F[_]: Async : Sync](endpoints: String, port: Int, user: O
   }
 
   def getSession: F[Session] =
-    blockingThreadPool.use { ec: ExecutionContext =>
-      implicit val cs = ec
+    Async[F].async {
+      (cb: Either[Throwable, Session] => Unit) =>
 
-      Async[F].async {
-        (cb: Either[Throwable, Session] => Unit) =>
+        val f: Future[Session] = cluster.connectAsync()
 
-          val f: Future[Session] = cluster.connectAsync()
-
-          f.onComplete {
-            case Success(s) => cb(Right(s))
-            case Failure(e) => cb(Left(e))
-          }
-      }
+        f.onComplete {
+          case Success(s) => cb(Right(s))
+          case Failure(e) => cb(Left(e))
+        }
     }
+
+  def getSessionSync = cluster.connect()
 
 }
 

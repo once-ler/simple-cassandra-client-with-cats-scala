@@ -6,13 +6,14 @@ import java.time.{Instant, LocalDateTime, ZoneOffset}
 import java.util.{Date, UUID}
 
 import cats.implicits._
-import cats.effect.{IO, Sync}
+import cats.effect.{IO, Sync, Async, ConcurrentEffect, ContextShift, Resource, Timer}
 import com.datastax.driver.core.utils.UUIDs
 import fs2.{Chunk, Pipe, Stream}
 import com.datastax.driver.core.{ResultSet, Row}
 import com.weather.scalacass.syntax._
 import com.eztier.common.mergeSyntax._
 import org.specs2.mutable.Specification
+import scala.concurrent.duration._
 
 case class CaResourceModified
 (
@@ -39,9 +40,28 @@ case class CaResourceProcessed
   Current: String = ""
 )
 
-class CaResourceManager[F[_]: Sync] extends WithCommon {
+class CaResourcePurposeHandler[F[_]]
+(
+  val dataType: String,
+  val purpose: String,
+  val handler: CaResourceProcessed => Stream[F, CaResourceProcessed]
+)
 
-  def fetchNextTasks(db: CassandraClient[F], keyspace: String, environment: String, store: String, dataType: String, purpose: String)(func: CaResourceProcessed => CaResourceProcessed): Stream[F, ResultSet] = {
+object CaResourcePurposeHandler {
+  def apply[F[_]](
+    dataType: String = "",
+    purpose: String = "",
+    handler: CaResourceProcessed => Stream[F, CaResourceProcessed] = (s: CaResourceProcessed) => Stream.emit(s).covary[F]
+  ): CaResourcePurposeHandler[F] = new CaResourcePurposeHandler(dataType, purpose, handler)
+}
+
+// class CaResourceManager[F[_]: Sync] extends WithCommon {
+class CaResourceManager[F[_]: Sync](db: CassandraClient[F], val keyspace: String, val environment: String, val store: String) extends WithCommon {
+
+  private val caResourceProcessedTable = "ca_resource_processed"
+
+  // def fetchNextTasks(db: CassandraClient[F], keyspace: String, environment: String, store: String, dataType: String, purpose: String)(func: CaResourceProcessed => CaResourceProcessed): Stream[F, ResultSet] = {
+  def fetchNextTasks(dataType: String, purpose: String)(func: CaResourceProcessed => Stream[F, CaResourceProcessed]): Stream[F, ResultSet] = {
     val ts = LocalDateTime.now().minusDays(2).toInstant(ZoneOffset.UTC).toEpochMilli()
     val defaultUuid = UUIDs.endOf(ts)
 
@@ -53,7 +73,7 @@ class CaResourceManager[F[_]: Sync] extends WithCommon {
          | and purpose = '$purpose' limit 1""".stripMargin
     ).map(_.getUUID("uid")) ++ Stream.emit(defaultUuid).covary[F]).compile.toList
 
-    Stream
+    val fb: F[List[CaResourceProcessed]] = Stream
       .eval(fa)
       .map(_.head)
       .flatMap { a =>
@@ -63,30 +83,61 @@ class CaResourceManager[F[_]: Sync] extends WithCommon {
              | and store = '$store'
              | and type = '$dataType'
              | and uid > ${a.toString}
-             | limit 10""".
+             | limit 20""".stripMargin
 
-            stripMargin
+        db.readAsync(nextStmt)
+      }
+      .map (_.as[CaResourceModified])
+      .map { a =>
+        val b = CaResourceProcessed()
+        (b merge a).copy(Purpose = purpose)
+      }
+      .compile.toList
 
-            println(nextStmt)
+    Stream.eval(fb).flatMap[F, ResultSet] { l =>
+      // Make sure each id is the latest.
+      val m = l.groupBy(_.Id)
+        .mapValues(_.sortBy(_.Uid.timestamp()).reverse.head)
+        .values
+        .toList
+        .sortBy(_.Uid.timestamp())
 
-          db.readAsync(nextStmt)
-        }
-        .map (_.as[CaResourceModified])
-        .map { a =>
-          val b = CaResourceProcessed()
-          (b merge a).copy(Purpose = purpose)
-        }
-        .map(func)
+      Stream.emits(m)
+        .covary[F]
+        .flatMap[F, CaResourceProcessed](func)
         .chunkN(10)
-        .flatMap(a =>
-          Stream.eval(db.batchInsertAsync(a, keyspace, "ca_resource_processed"))
-        )
+        .flatMap[F, ResultSet] { a =>
+        Stream.eval(db.batchInsertAsync(a, keyspace, caResourceProcessedTable))
+      }
+    }
+
   }
 
 }
 
 object CaResourceManager {
-  def apply[F[_]: Sync]: CaResourceManager[F] = new CaResourceManager[F]()
+  // def apply[F[_]: Sync]: CaResourceManager[F] = new CaResourceManager[F]()
+  def apply[F[_]: Sync](db: CassandraClient[F], keyspace: String, environment: String, store: String): CaResourceManager[F] = new CaResourceManager[F](db, keyspace, environment, store)
+}
+
+object domain {
+  private val keyspace = "dwh"
+  private val environment = "development"
+  private val store = "IKEA"
+
+  final case class AppConfig
+  (
+    keyspace: String = keyspace,
+    environment: String = environment,
+    store: String = store
+  )
+
+  def createCaResourceManagerResource[F[_] : Async : ContextShift : ConcurrentEffect : Timer](): Resource[F, CaResourceManager[F]] =
+    for {
+      conf <- Resource.liftF(Sync[F].delay(AppConfig()))
+      db <- createSimpleCassandraClientResource[F]
+      ca = CaResourceManager[F](db, conf.keyspace, conf.environment, conf.store)
+    } yield ca
 }
 
 class TestSimpleCassandraClientSpec extends Specification {
@@ -100,11 +151,19 @@ class TestSimpleCassandraClientSpec extends Specification {
   val type_ = "Sales"
   val purpose = "forecast"
 
+  private def pause[F[_]: Timer](d: FiniteDuration) = Stream.emit(1).covary[F].delayBy(d)
+
+  private def repeat(io : IO[Unit]): IO[Nothing] =
+    IO.suspend(
+      io
+        *> IO.delay(pause[IO](2 seconds).compile.drain.unsafeRunSync())
+        *> repeat(io)
+    )
+
   "Simple Cassandra Client" should {
 
     "Create a table" in {
 
-      println("createSimpleCassandraClientResource[IO]")
       val res = createSimpleCassandraClientResource[IO].use {
         case db =>
 
@@ -120,7 +179,6 @@ class TestSimpleCassandraClientSpec extends Specification {
 
     "Create another table" in {
 
-      println("createSimpleCassandraClientResource[IO]")
       val res = createSimpleCassandraClientResource[IO].use {
         case db =>
 
@@ -135,7 +193,6 @@ class TestSimpleCassandraClientSpec extends Specification {
     }
 
     "Insert a row" in {
-      println("createSimpleCassandraClientResource[IO]")
       val res = createSimpleCassandraClientResource[IO].use {
         case db =>
 
@@ -173,7 +230,6 @@ class TestSimpleCassandraClientSpec extends Specification {
         WHERE uid > maxTimeuuid('2013-01-01 00:05+0000') AND uid < minTimeuuid('2013-02-02 10:00+0000')
     */
     "Read a table" in {
-      println("createSimpleCassandraClientResource[IO]")
       val res = createSimpleCassandraClientResource[IO].use {
         case db =>
           val ts = LocalDateTime.now().minusDays(2).toInstant(ZoneOffset.UTC).toEpochMilli()
@@ -196,7 +252,6 @@ class TestSimpleCassandraClientSpec extends Specification {
     }
 
     "Read another table" in {
-      println("createSimpleCassandraClientResource[IO]")
       val res = createSimpleCassandraClientResource[IO].use {
         case db =>
           val ts = LocalDateTime.now().minusDays(2).toInstant(ZoneOffset.UTC).toEpochMilli()
@@ -224,7 +279,18 @@ class TestSimpleCassandraClientSpec extends Specification {
     }
 
     "Read multiple tables" in {
-      println("createSimpleCassandraClientResource[IO]")
+      import domain._
+
+      val res = createCaResourceManagerResource[IO].use { caResourceManager =>
+        val u2 = caResourceManager.fetchNextTasks(type_, purpose) { a =>
+          println(a)
+          Stream.emit(a)
+        }
+        IO.suspend(u2.compile.toList)
+      }.unsafeRunSync()
+
+      res.isInstanceOf[List[ResultSet]]
+/*
       val res = createSimpleCassandraClientResource[IO].use {
         case db =>
 
@@ -237,6 +303,38 @@ class TestSimpleCassandraClientSpec extends Specification {
       }.unsafeRunSync()
 
       res.isInstanceOf[List[ResultSet]]
+*/
+    }
+
+    "Test repeated reads" in {
+      import domain._
+
+      val purposeHandlers = List(
+        CaResourcePurposeHandler[IO](
+          dataType = type_,
+          purpose = purpose,
+          handler = t => Stream.emit(t)
+        )
+      )
+
+      createCaResourceManagerResource[IO].use { caResourceManager =>
+        val io2: Stream[IO, Stream[IO, Int]] = Stream.emits(purposeHandlers)
+          .map { a =>
+            println(Instant.now())
+            val s: Stream[IO, Int] = caResourceManager.fetchNextTasks(a.dataType, a.purpose)(a.handler).evalMap[IO, Int](_ => IO(0))
+            s.flatMap { i =>
+              println(i)
+              Stream.emit(i)
+            }
+          }
+        // Concurrently run all.
+        val io = io2.parJoin(4).compile.drain
+
+        repeat(io).unsafeRunSync()
+
+      }.unsafeRunSync()
+
+      1 mustEqual 1
     }
 
   }
