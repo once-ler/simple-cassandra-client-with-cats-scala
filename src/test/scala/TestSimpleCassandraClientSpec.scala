@@ -56,7 +56,7 @@ object CaResourcePurposeHandler {
 }
 
 // class CaResourceManager[F[_]: Sync] extends WithCommon {
-class CaResourceManager[F[_]: Sync](db: CassandraClient[F], val keyspace: String, val environment: String, val store: String) extends WithCommon {
+class CaResourceManager[F[_]: Sync](val db: CassandraClient[F], val keyspace: String, val environment: String, val store: String) extends WithCommon {
 
   private val caResourceProcessedTable = "ca_resource_processed"
 
@@ -330,8 +330,21 @@ class TestSimpleCassandraClientSpec extends Specification {
         // Concurrently run all.
         val io = io2.parJoin(4).compile.drain
 
-        repeat(io).unsafeRunSync()
+        // repeat(io).unsafeRunSync()
+        IO.delay(io.unsafeRunSync())      
 
+      }.unsafeRunSync()
+
+      1 mustEqual 1
+    }
+
+    "Test shutdown" in {
+      import domain._
+
+      createCaResourceManagerResource[IO].use { caResourceManager =>
+        caResourceManager.db.session.close()
+
+        IO.unit
       }.unsafeRunSync()
 
       1 mustEqual 1
