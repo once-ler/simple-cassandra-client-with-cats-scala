@@ -12,7 +12,7 @@ import scala.util.{Failure, Success}
 import scala.reflect.runtime.universe._
 import collection.JavaConverters._
 
-class CassandraClient[F[_] : Async : Sync: Concurrent : Functor](session: Session)
+class CassandraClient[F[_] : Async : Sync: Concurrent : Functor](val session: Session)
   extends WithBlockingThreadPool
   with WithInsertStatementBuilder
   with WithCreateStatementBuilder {

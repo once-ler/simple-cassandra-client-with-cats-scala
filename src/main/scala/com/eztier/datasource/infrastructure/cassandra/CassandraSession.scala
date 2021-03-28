@@ -4,7 +4,7 @@ package infrastructure.cassandra
 import cats.effect.{Async, Sync}
 import java.net.InetSocketAddress
 import scala.collection.JavaConverters._
-import com.datastax.driver.core.{Cluster, Session}
+import com.datastax.driver.core.{Cluster, Session, CloseFuture}
 import com.datastax.driver.core.policies.ConstantReconnectionPolicy
 import scala.concurrent.{ExecutionContext, Future}
 import scala.util.{Failure, Success}
@@ -49,6 +49,8 @@ class CassandraSession[F[_]: Async : Sync](endpoints: String, port: Int, user: O
     }
 
   def getSessionSync = cluster.connect()
+
+  def closeSessionSync = cluster.close()
 
 }
 

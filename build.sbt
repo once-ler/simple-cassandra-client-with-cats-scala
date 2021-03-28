@@ -121,19 +121,19 @@ developers := List(
 )
 
 releaseProcess := Seq[ReleaseStep](
-  // checkSnapshotDependencies,
+  checkSnapshotDependencies,
   inquireVersions,
-  // runClean,
-  // runTest,
+  runClean,
+  runTest,
   setReleaseVersion,
-  commitReleaseVersion,
-  tagRelease,
-  // releaseStepCommand("publishSigned"),
-  // publishArtifacts,
+  // commitReleaseVersion,
+  // tagRelease,
+  releaseStepCommand("publishSigned"),
+  publishArtifacts,
   setNextVersion,
-  commitNextVersion,
+  // commitNextVersion,
   // releaseStepCommand("sonatypeRelease"),
-  pushChanges
+  // pushChanges
 )
 
 // sbt-assembly
