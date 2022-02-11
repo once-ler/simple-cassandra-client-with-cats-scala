@@ -1,24 +1,116 @@
 import ReleaseTransformations._
 
-scalaVersion := "2.12.8"
+val Scala212 = "2.12.15"
+val Scala213 = "2.13.8"
+val Scala30 = "3.0.2"
+val Scala31 = "3.1.0"
+
+ThisBuild / crossScalaVersions := Seq(Scala31, Scala30, Scala212, Scala213)
+ThisBuild / scalaVersion := (ThisBuild / crossScalaVersions).value.last
+
+/*
+val scalaMajorVersion = SettingKey[Int]("scalaMajorVersion")
+
+lazy val scalaVersionSettings = Seq(
+  scalaVersion := "2.12.8",
+  crossScalaVersions := Seq("2.13.8", scalaVersion.value),
+  scalaMajorVersion := {
+    val v = scalaVersion.value
+    CrossVersion.partialVersion(v).map(_._2.toInt).getOrElse {
+      throw new RuntimeException(s"could not get Scala major version from $v")
+    }
+  }
+)
+*/
+
+// scalaVersion := "2.12.8"
 
 name := "simple-cassandra-client-with-cats-scala"
 
+// https://github.com/typelevel/scalacheck/pull/411/files
+/*
 lazy val compilerOptions = Seq(
-  "-Xfatal-warnings",
+  // "-Xfatal-warnings",
   "-deprecation",
   "-feature",
   "-unchecked",
   "-language:_"
-)
+) ++ {
+  val modern = Seq("-Xlint:-unused", "-Ywarn-infer-any", "-Ywarn-unused-import", "-Ywarn-unused:-patvars,-implicits,-locals,-privates,-explicits")
+  scalaMajorVersion.value match {
+    case 10 => Seq("-Xfatal-warnings", "-Xlint")
+    case 11 => Seq("-Xfatal-warnings", "-Xlint", "-Ywarn-infer-any", "-Ywarn-unused-import")
+    case 12 => "-Xfatal-warnings" +: modern
+    case 13 => modern
+  }
+}
+*/
 
 lazy val commonSettings = Seq(
   organization := "com.eztier",
   version := "0.1.4",
-  scalaVersion := "2.12.8",
-  scalacOptions ++= compilerOptions,
+  
+  /*
+  credentials ++= (for {
+    username <- Option(System.getenv().get("SONATYPE_USERNAME"))
+    password <- Option(System.getenv().get("SONATYPE_PASSWORD"))
+  } yield Credentials(
+    "Sonatype Nexus Repository Manager",
+    "oss.sonatype.org",
+    username, password
+  )).toSeq,
+  */
+
+  Compile / unmanagedSourceDirectories in Compile += (baseDirectory in LocalRootProject).value / "src" / "main" / "scala",
+
+  Compile / unmanagedSourceDirectories += {
+    val s = CrossVersion.partialVersion(scalaVersion.value) match {
+      case Some((3,  _)) => "scala-2.13+"
+      case Some((2, 13)) => "scala-2.13+"
+      case _             => "scala-2.13-"
+    }
+    (LocalRootProject / baseDirectory).value / "src" / "main" / s
+  },
+
+  Test / unmanagedSourceDirectories in Test += (baseDirectory in LocalRootProject).value / "src" / "test" / "scala",
+
+  // scalaVersion := "2.12.8",
+
+  scalaVersion := Scala213,
+  crossScalaVersions := Seq(Scala212, Scala213),
+
+  // 2.11 - 2.13
+  scalacOptions ++= {
+    def mk(r: Range)(strs: String*): Int => Seq[String] =
+      (n: Int) => if (r.contains(n)) strs else Seq.empty
+
+    // Remove "-Ywarn-unused-import" for 12.  
+    val groups: Seq[Int => Seq[String]] = Seq(
+      mk(12 to 12)("-language:_", "-Ywarn-inaccessible", "-Ywarn-nullary-override",
+        "-Ywarn-nullary-unit", "-Xfuture", "-Xfatal-warnings", "-deprecation",
+        "-Ywarn-infer-any"),
+      mk(12 to 13)("-language:_", "-encoding", "UTF-8", "-feature", "-unchecked",
+        "-Ywarn-dead-code", "-Ywarn-numeric-widen", "-Xlint:-unused",
+        "-Ywarn-unused:-patvars,-implicits,-locals,-privates,-explicits"))
+
+    CrossVersion.partialVersion(scalaVersion.value) match {
+      case Some((2, n)) => groups.flatMap(f => f(n.toInt))
+      case _            => Seq("-language:Scala2")
+    }
+  },
+
+  // HACK: without these lines, the console is basically unusable,
+  // since all imports are reported as being unused (and then become
+  // fatal errors).
+  scalacOptions in (Compile, console) ~= {_.filterNot("-Ywarn-unused-import" == _)},
+  scalacOptions in (Test, console) := (scalacOptions in (Compile, console)).value,
+
+  // don't use fatal warnings in tests
+  scalacOptions in Test ~= (_ filterNot (_ == "-Xfatal-warnings")),
+
   addCompilerPlugin("com.olegpy" %% "better-monadic-for" % "0.3.1"),
-  addCompilerPlugin("org.typelevel" %% "kind-projector" % "0.11.0" cross CrossVersion.full),
+  // addCompilerPlugin("org.typelevel" %% "kind-projector" % "0.11.0" cross CrossVersion.full),
+  addCompilerPlugin("org.typelevel" % "kind-projector" % "0.13.2" cross CrossVersion.full),
   resolvers ++= Seq(
     Resolver.sonatypeRepo("public"),
     Resolver.sonatypeRepo("releases"),
@@ -49,7 +141,7 @@ val circe = "io.circe" %% "circe-core" % CirceVersion
 val circeGenericExtras = "io.circe" %% "circe-generic-extras" % CirceGenericExVersion
 val circeConfig = "io.circe" %% "circe-config" % CirceConfigVersion
 val specs2 = "org.specs2" %% "specs2-core" % Specs2Version % "test"
-val scalaCass = "com.github.thurstonsand" %% "scala-cass" % ScalaCassVersion
+// val scalaCass = "com.github.thurstonsand" %% "scala-cass" % ScalaCassVersion
 val logback = "ch.qos.logback" % "logback-classic" % LogbackVersion
 
 lazy val simpleCassandraClientWithCats = project
@@ -66,7 +158,7 @@ lazy val simpleCassandraClientWithCats = project
       circe,
       circeGenericExtras,
       circeConfig,
-      scalaCass,
+      // scalaCass,
       specs2,
       logback
     ),

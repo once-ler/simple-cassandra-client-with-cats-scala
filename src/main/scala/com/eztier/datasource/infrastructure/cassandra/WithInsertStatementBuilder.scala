@@ -14,12 +14,15 @@ trait WithInsertStatementBuilder extends WithCommon {
     filterFunc: java.lang.reflect.Field => Boolean = (_) => true,
     formatFunc: Any => Any = a => a
   ): (Array[String], Array[AnyRef]) =
-    ((Array[String](), Array[AnyRef]()) /: in.getClass.getDeclaredFields.filter(filterFunc)) {
-      (a, f) =>
+    // ((Array[String](), Array[AnyRef]()) foldLeft in.getClass.getDeclaredFields.filter(filterFunc)) {
+    in.getClass.getDeclaredFields.filter(filterFunc).foldLeft(Seq.empty[(String, AnyRef)]) {  
+      (arr, f) =>
         f.setAccessible(true)
-        val k = a._1 :+ formatFunc(camelToUnderscores(f.getName)).asInstanceOf[String]
+        // val k = a._1 :+ formatFunc(camelToUnderscores(f.getName)).asInstanceOf[String]
+        val k = formatFunc(camelToUnderscores(f.getName)).asInstanceOf[String]
 
-        val v = a._2 :+
+        // val v = a._2 :+
+        val v =
           (formatFunc(f.get(in)) match {
             case Some(o) =>
               o match {
@@ -37,7 +40,11 @@ trait WithInsertStatementBuilder extends WithCommon {
             case _ => formatFunc(f.get(in))
           }).asInstanceOf[AnyRef]
 
-        (k, v)
+        // (k, v)
+        arr ++ Seq((k, v))
+    }.foldLeft((Array[String](), Array[AnyRef]())) {
+      case (a, (k, v)) => 
+        (a._1 :+ k, a._2 :+ v)  
     }
 
   def buildInsertStatements[A <: AnyRef](records: Chunk[A], keySpace: String, tableName: String): Vector[Insert] =

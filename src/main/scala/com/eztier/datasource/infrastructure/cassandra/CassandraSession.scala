@@ -50,7 +50,7 @@ class CassandraSession[F[_]: Async : Sync](endpoints: String, port: Int, user: O
 
   def getSessionSync = cluster.connect()
 
-  def closeSessionSync = cluster.close()
+  def closeSessionSync() = cluster.close()
 
 }
 

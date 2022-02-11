@@ -47,7 +47,7 @@ trait WithCreateStatementBuilder extends WithCommon {
   private def toCaType[T](implicit typeTag: TypeTag[T]) = {
     val members = classAccessors[T]
 
-    val m = (Map[String, String]() /: members) {
+    val m = members.foldLeft(Map[String, String]()) {
       (a, f) =>
         val o: Type = f.info.resultType
         val n = f.name.toString
@@ -68,7 +68,7 @@ trait WithCreateStatementBuilder extends WithCommon {
   private def getCreateStmtString[T](keySpace: String, tableName: String)(implicit typeTag: TypeTag[T]): Seq[String] = {
     val m = toCaType[T]
 
-    val f = (Array[String]() /: m) {
+    val f = m.foldLeft(Array[String]()) {
       (a, n) =>
         a :+ (n._1 + " " + n._2)
     }
